@@ -1,5 +1,5 @@
 /* Service worker: caches the app shell so it opens offline. Bump VERSION after editing any file. */
-const VERSION = 'faith-app-v6';
+const VERSION = 'faith-app-v7';
 const SHELL = [
   './', './index.html', './styles.css', './manifest.webmanifest',
   './js/config.js', './js/content.js', './js/store.js', './js/app.js',

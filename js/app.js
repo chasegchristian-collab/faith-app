@@ -22,6 +22,41 @@
     return '<a class="' + (cls || '') + '" href="' + esc(C.bibleGatewayUrl(ref)) + '" target="_blank" rel="noopener noreferrer">' +
       esc(label || ref) + '<span class="sr-only"> (opens Bible Gateway, NLT, in a new tab)</span></a>';
   }
+  // One small chip per scripture ref ("Hebrew" for OT, "Greek" for NT). Tapping it expands a panel (built on demand)
+  // with links to compare the NLT with the original language. Links only: no scripture text is stored or shown.
+  let compareSeq = 0;
+  function compareChip(ref) {
+    const lang = C.originalLanguage(ref);
+    if (!lang) return '';
+    const id = 'cmp-' + (++compareSeq);
+    return '<button type="button" class="chip-lang" data-action="compare" data-ref="' + esc(ref) + '" aria-expanded="false" aria-controls="' + id + '"' +
+      ' aria-label="Compare ' + esc(ref) + ' with the original ' + lang + '">' + lang + '</button>';
+  }
+  function comparePanel(ref, id) {
+    const L = C.compareLinks(ref);
+    const ext = (url, label, note) => '<a class="cmp-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+      '<span>' + esc(label) + '\u00a0↗</span>' + (note ? '<span class="small muted">' + esc(note) + '</span>' : '') + '</a>';
+    const side = L.side
+      ? ext(L.side, 'Side by side (Bible Gateway)', 'NLT next to the ' + (L.testament === 'OT' ? 'Hebrew (WLC)' : 'Greek (SBLGNT)'))
+      : '<p class="small muted cmp-note">The Hebrew numbers this as ' + esc(L.hebrewRef) + ', so open the two separately:</p>' +
+        ext(L.split.nlt, 'English (NLT): ' + ref, 'Bible Gateway') + ext(L.split.wlc, 'Hebrew (WLC): ' + L.hebrewRef, 'Bible Gateway');
+    return '<div class="cmp-panel" id="' + id + '" role="group" aria-label="Compare ' + esc(ref) + ' with the original ' + L.language + '">' +
+      side + ext(L.step, 'Word by word (STEP Bible)', 'English side is the BSB, not the NLT') + '</div>';
+  }
+  function toggleCompare(btn) {
+    const id = btn.getAttribute('aria-controls');
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    const existing = document.getElementById(id);
+    if (open) { if (existing) existing.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+    const host = btn.closest('.cmp-host') || btn.parentNode;
+    host.insertAdjacentHTML('beforeend', comparePanel(btn.dataset.ref, id));
+    btn.setAttribute('aria-expanded', 'true');
+  }
+  const ORIGINAL_NOTE = 'The NLT is a meaning-based (thought-for-thought) translation: it translates literally where that\'s clear and ' +
+    'gives the sense of a phrase where a literal rendering would confuse. The Hebrew and Greek are the texts translators work from. ' +
+    'A word-by-word line isn\'t a better translation, because languages don\'t match word for word. Be cautious with word studies: ' +
+    'a word\'s root or its other uses don\'t override what it means in this sentence. Hebrew reads right to left, and some Psalms ' +
+    'are numbered one or two verses differently because the Hebrew counts the title as a verse.';
   function fmtDate(key) {
     if (!key) return '';
     const d = new Date(key.length === 10 ? key + 'T12:00:00' : key);
@@ -152,17 +187,17 @@
       '<p class="muted">' + greet + ', ' + esc(me()) + ' · ' + esc(fmtDate(todayKey)) + '</p>' +
       '<section class="card accent" aria-labelledby="vod-h"><p class="eyebrow" id="vod-h">Verse of the day</p>' +
         '<p class="verse-ref">' + esc(ref) + '</p>' +
-        bgLink(ref, 'Read it in the NLT ↗', 'btn primary block') + '</section>' +
+        bgLink(ref, 'Read it in the NLT ↗', 'btn primary block') + '<div class="cmp-host">' + compareChip(ref) + '</div></section>' +
       '<h2>Streaks together</h2><div class="streaks">' + streakTile('prayer', 'Prayer') + streakTile('reading', 'Reading') + streakTile('gratitude', 'Gratitude') + '</div>' +
       '<section class="card" aria-labelledby="pr-h"><div class="row spread"><h3 id="pr-h">Prayer</h3><span class="muted small">' + active + ' active · ' + answered + ' answered</span></div>' +
         '<div class="row" style="margin-top:.5rem"><button type="button" class="btn ' + (S.didToday('prayer') ? 'done' : 'good') + '" data-action="prayed-today">' +
         (S.didToday('prayer') ? '✓ We prayed today' : 'We prayed today') + '</button><a class="btn" href="#pray">Open list</a></div></section>' +
       '<section class="card" aria-labelledby="gr-h"><h3 id="gr-h">Tonight\'s gratitude</h3><p class="prompt">' + esc(promptOfDay()) + '</p>' +
         '<p>' + gStatus + '</p><a class="btn block" href="#thanks">Write tonight\'s entry</a></section>' +
-      '<section class="card" aria-labelledby="rd-h"><h3 id="rd-h">Today\'s reading</h3>' +
+      '<section class="card cmp-host" aria-labelledby="rd-h"><h3 id="rd-h">Today\'s reading</h3>' +
         (next ? '<p class="muted small">' + esc(next.section) + ' · Day ' + (C.PLAN.indexOf(next) + 1) + ' of ' + C.PLAN.length + '</p>' +
           '<div class="row">' + bgLink(next.ref, next.title + ' ↗', 'btn primary') +
-          '<button type="button" class="btn" data-action="toggle-reading" data-id="' + next.id + '">Mark read</button></div>'
+          '<button type="button" class="btn" data-action="toggle-reading" data-id="' + next.id + '">Mark read</button>' + compareChip(next.ref) + '</div>'
           : '<p>🎉 You finished the plan together!</p>') + '</section>' +
       (rems.length ? '<section class="card"><h3>Reminders</h3><ul class="list">' + rems.map((r) =>
         '<li class="small">' + esc(fmtTime(r.time)) + ' — ' + esc(r.title) + ' <span class="muted">(' + esc(r.forWhom) + ')</span></li>').join('') +
@@ -224,13 +259,17 @@
       if (d.section !== section) { section = d.section; head = '<h3 style="margin-top:1rem">' + esc(section) + '</h3>'; }
       return head + '<div class="plan-day"><button type="button" class="check" data-action="toggle-reading" data-id="' + d.id + '" aria-pressed="' + isDone +
         '" aria-label="Day ' + (i + 1) + ', ' + esc(d.title) + (isDone ? ', read' : ', not read') + '">' + (isDone ? '✓' : '') + '</button>' +
-        '<div class="grow">' + bgLink(d.ref, 'Day ' + (i + 1) + ': ' + d.title) +
+        '<div class="grow cmp-host"><div class="ref-line">' + bgLink(d.ref, 'Day ' + (i + 1) + ': ' + d.title) + compareChip(d.ref) + '</div>' +
         (isDone ? '<div class="small muted">Read by ' + esc(st.by) + ' · ' + esc(fmtDate(st.at)) + '</div>' : '') + '</div></div>';
     }).join('');
     return '' +
       '<section class="card accent"><p class="eyebrow">Verse of the day</p><p class="verse-ref">' + esc(ref) + '</p>' +
-        bgLink(ref, 'Read it in the NLT ↗', 'btn primary block') +
+        bgLink(ref, 'Read it in the NLT ↗', 'btn primary block') + '<div class="cmp-host">' + compareChip(ref) + '</div>' +
         '<p class="hint">Both of your phones show the same verse each day. Text opens on Bible Gateway (NLT).</p></section>' +
+      '<details class="about-orig"><summary><span aria-hidden="true">ⓘ</span> About the original languages</summary>' +
+        '<p class="small">' + esc(ORIGINAL_NOTE) + '</p>' +
+        '<p class="small muted">Tap Hebrew or Greek next to any reference to compare. On a phone, the side-by-side page may show narrow ' +
+        'columns, and STEP Bible shows a tour pop-up on your first visit.</p></details>' +
       '<h2>Reading plan: John + Psalms</h2>' +
       '<p class="muted small">Shared progress for both of you: ' + done + ' of ' + C.PLAN.length + ' days · ' + pct + '%</p>' +
       '<p class="hint">A check-off by either of you counts for you both.</p>' +
@@ -584,6 +623,7 @@
     const act = el.dataset.action;
     switch (act) {
       case 'mic': startMic(el); break;
+      case 'compare': toggleCompare(el); break;
       case 'switch-user': {
         const p = partners(); const next = S.device().me === 0 ? 1 : 0;
         S.setMe(next); toast('Now using as ' + (p[next] || 'Partner')); render(); break;

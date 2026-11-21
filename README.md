@@ -8,11 +8,39 @@ Scripture: the app stores **references only** (for example "Philippians 4:6-7").
 Bible Gateway in the NLT (`https://www.biblegateway.com/passage/?search=<ref>&version=NLT`).
 No NLT text is included, because the NLT is copyrighted.
 
+## Compare with the original language (links only)
+Every scripture reference (verse of the day, the reading-plan days, today's reading on Home) has one small chip,
+**Hebrew** for Old Testament refs or **Greek** for New Testament refs. Tapping it expands two links:
+
+1. **Side by side (Bible Gateway):** the NLT next to the original-language text.
+   - NT: `https://www.biblegateway.com/passage/?search=<ref>&version=NLT;SBLGNT` (SBL Greek New Testament)
+   - OT: `https://www.biblegateway.com/passage/?search=<ref>&version=NLT;WLC` (Westminster Leningrad Codex)
+   - Bible Gateway's parallel view lines verses up **by number**, and the Hebrew numbers some verses differently
+     (it counts most psalm titles as verse 1; Joel and Malachi have different chapter breaks). When a ref's Hebrew
+     numbering differs, one search can't line both up, so the app shows two links instead: the NLT at the English ref
+     and the WLC at the Hebrew ref (for example Psalm 46:1-3 → WLC Psalm 46:2-4). Whole chapters (the reading-plan
+     psalms) keep a single side-by-side link, because the chapter numbers match.
+     The mapping is the explicit `WLC_OVERRIDES` table in `js/content.js`; anything not listed uses the same numbering.
+2. **Word by word (STEP Bible):** an interlinear that lines up each Hebrew/Greek word with English.
+   `https://www.stepbible.org/?q=version=BSB|version=SBLG|reference=<OSIS ref>&options=HVLUN&display=INTERLINEAR`
+   for NT, `version=BSB|version=OSHB` for OT, with OSIS refs like `John.3.16`, `1John.4.7-8`, `Psa.46`.
+   STEP uses the English numbering and maps the Hebrew itself. STEP doesn't have the NLT, so its English side is the
+   **BSB** (Berean Standard Bible), not the NLT.
+
+The Word tab has a collapsed **ⓘ About the original languages** note explaining what the comparison is (and isn't).
+On a phone, Bible Gateway's side-by-side page can show narrow columns, and STEP shows a tour pop-up on the first visit.
+
+**Licensing:** this feature is links only. The app stores and shows no Hebrew, Greek, NLT or BSB text, so no license
+or credit line is needed. Bible Gateway's terms allow deep links but forbid copying or caching their pages, so the app
+uses plain-text labels (no logos) and never fetches their content. If original-language text is ever embedded
+(a possible "Phase 2"), use SBLGNT (CC BY 4.0) and the WLC (public domain, via the Open Scriptures Hebrew Bible)
+with their credit lines; don't embed THGNT (all rights reserved).
+
 ## Files
 ```
 index.html             app shell + bottom tabs
 styles.css             mobile-first styles (20px base, dark default, light when the phone is in light mode)
-js/content.js          verse references (70), gratitude prompts (30), reading plan (37 days)
+js/content.js          verse references (70), gratitude prompts (30), reading plan (37 days), original-language links
 js/config.js           live sync settings (Supabase URL + anon key); empty = local-only
 js/store.js            data layer: localStorage, export/import, merge, live sync engine
 js/app.js              views, routing, voice input, reminders, sync UI

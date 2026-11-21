@@ -3,6 +3,9 @@ const { chromium, devices } = require('playwright-core');
   const browser = await chromium.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox'] });
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     userAgent: devices['iPhone 13'].userAgent, colorScheme: 'dark' });
+  // Keep this test local-only: serve an empty sync config (the committed one points at the live Supabase project).
+  await ctx.route('**/js/config.js', (route) => route.fulfill({ status: 200, contentType: 'application/javascript',
+    body: "window.FAITH_CONFIG = { supabaseUrl: '', supabaseAnonKey: '' };" }));
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', m => { if (m.type() === 'error' || m.type()==='warning') errors.push(m.type()+': '+m.text()); });
@@ -78,6 +81,66 @@ const { chromium, devices } = require('playwright-core');
   ok(john3 === 'https://www.biblegateway.com/passage/?search=John%203&version=NLT', 'reading link: ' + john3);
   await page.evaluate(() => window.scrollTo(0,0));
   await page.evaluate(() => document.getElementById('toast').classList.remove('show')); await page.waitForTimeout(400); await page.screenshot({ path: 'screenshots/03-verse-and-reading.png' });
+  // compare with the original language (links only)
+  const BG = 'https://www.biblegateway.com/passage/?search=';
+  const STEP = 'https://www.stepbible.org/?q=version=BSB|version=';
+  const cmp = await page.evaluate(() => ['John 3:16', '1 John 4:7-8', 'Psalm 46:1-3', 'Psalm 34:8', 'Song of Songs 8:6-7', 'John 3', 'Psalm 46']
+    .map((r) => Content.compareLinks(r)));
+  const [cJ316, c1J, cP46, cP34, cSong, cJ3, cPs46] = cmp;
+  ok(cJ316.language === 'Greek' && cJ316.side === BG + 'John%203%3A16&version=NLT;SBLGNT' &&
+     cJ316.step === STEP + 'SBLG|reference=John.3.16&options=HVLUN&display=INTERLINEAR', 'compare John 3:16');
+  ok(c1J.side === BG + '1%20John%204%3A7-8&version=NLT;SBLGNT' && c1J.step === STEP + 'SBLG|reference=1John.4.7-8&options=HVLUN&display=INTERLINEAR', 'compare 1 John 4:7-8');
+  ok(cP46.language === 'Hebrew' && cP46.hebrewRef === 'Psalm 46:2-4' && cP46.side === null &&
+     cP46.split.nlt === BG + 'Psalm%2046%3A1-3&version=NLT' && cP46.split.wlc === BG + 'Psalm%2046%3A2-4&version=WLC' &&
+     cP46.step === STEP + 'OSHB|reference=Psa.46.1-3&options=HVLUN&display=INTERLINEAR', 'compare Psalm 46:1-3 (WLC 46:2-4)');
+  ok(cP34.hebrewRef === 'Psalm 34:9' && cP34.split.nlt === BG + 'Psalm%2034%3A8&version=NLT' && cP34.split.wlc === BG + 'Psalm%2034%3A9&version=WLC' &&
+     cP34.step === STEP + 'OSHB|reference=Psa.34.8&options=HVLUN&display=INTERLINEAR', 'compare Psalm 34:8 (WLC 34:9)');
+  ok(cSong.side === BG + 'Song%20of%20Songs%208%3A6-7&version=NLT;WLC' && cSong.step === STEP + 'OSHB|reference=Song.8.6-7&options=HVLUN&display=INTERLINEAR', 'compare Song of Songs 8:6-7');
+  ok(cJ3.side === BG + 'John%203&version=NLT;SBLGNT' && cJ3.step === STEP + 'SBLG|reference=John.3&options=HVLUN&display=INTERLINEAR', 'compare reading-plan John 3');
+  ok(cPs46.side === BG + 'Psalm%2046&version=NLT;WLC' && cPs46.step === STEP + 'OSHB|reference=Psa.46&options=HVLUN&display=INTERLINEAR', 'compare reading-plan Psalm 46 (whole chapter, same numbering)');
+  const wlcMap = await page.evaluate(() => ['Psalm 46:10', 'Joel 2:28', 'Malachi 4:2', 'Psalm 23:1-3'].map((r) => Content.wlcRef(r)));
+  ok(wlcMap.join('|') === 'Psalm 46:11|Joel 3:1|Malachi 3:20|Psalm 23:1-3', 'WLC numbering overrides: ' + wlcMap.join('|'));
+  const allParse = await page.evaluate(() => Content.VERSES.concat(Content.PLAN.map((d) => d.ref)).every((r) => !!Content.compareLinks(r)));
+  ok(allParse, 'every verse and plan ref gets compare links');
+  const chipJ3 = page.locator('.plan-day:has(a:text-is("Day 3: John 3")) .chip-lang');
+  const chipP46 = page.locator('.plan-day:has(a:text-is("Day 29: Psalm 46")) .chip-lang');
+  ok((await chipJ3.innerText()).startsWith('Greek') && (await chipP46.innerText()).startsWith('Hebrew'), 'chip labelled by testament (John 3 Greek, Psalm 46 Hebrew)');
+  const vodLang = await page.evaluate(() => Content.originalLanguage(FaithApp.verseOfDay(new Date())));
+  ok((await page.locator('.card.accent .chip-lang').innerText()).startsWith(vodLang), 'verse-of-the-day chip: ' + vodLang);
+  ok(await page.locator('.plan-day .chip-lang').count() === 37 && await page.locator('.plan-day').first().locator('.chip-lang').count() === 1, 'one chip per plan reference');
+  ok(await page.$$eval('.cmp-panel', (n) => n.length) === 0 && !(await page.getAttribute('details.about-orig', 'open')), 'compare panels and the about note start collapsed');
+  await chipP46.click();
+  ok(await chipP46.getAttribute('aria-expanded') === 'true', 'chip expands');
+  const p46Links = await page.$$eval('.plan-day .cmp-panel a', (as) => as.map((a) => a.href + ' ' + a.target));
+  ok(p46Links.length === 2 && p46Links[0] === BG + 'Psalm%2046&version=NLT;WLC _blank' && p46Links[1].startsWith(STEP + 'OSHB|reference=Psa.46&'), 'Psalm 46 panel links: ' + p46Links.join(' , '));
+  await chipP46.scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 120)); await page.waitForTimeout(200);
+  await page.screenshot({ path: 'screenshots/06-compare-plan.png' });
+  await chipP46.click();
+  ok(await page.$$eval('.cmp-panel', (n) => n.length) === 0, 'chip collapses again');
+  // split links for a verse whose Hebrew numbering differs: a phone whose date makes Psalm 46:1-3 the verse of the day
+  const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+    userAgent: devices['iPhone 13'].userAgent, colorScheme: 'dark' });
+  await ctx4.route('**/js/config.js', (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: "window.FAITH_CONFIG = { supabaseUrl: '', supabaseAnonKey: '' };" }));
+  const p4 = await ctx4.newPage(); p4.on('pageerror', e => errors.push('p4 pageerror: ' + e.message));
+  await p4.clock.setFixedTime(new Date(2026, 9, 20, 12, 0)); // Oct 20, 2026 -> VERSES[26] = Psalm 46:1-3
+  await p4.goto(B); await p4.click('#setup-form button[type=submit]'); await p4.click('.tabbar a[data-tab=read]');
+  ok(await p4.textContent('.verse-ref') === 'Psalm 46:1-3' && (await p4.locator('.card.accent .chip-lang').innerText()).startsWith('Hebrew'), 'Psalm 46:1-3 verse card has a Hebrew chip');
+  await p4.click('.card.accent .chip-lang');
+  const splitText = await p4.textContent('.card.accent .cmp-panel');
+  const splitLinks = await p4.$$eval('.card.accent .cmp-panel a', (as) => as.map((a) => a.href));
+  ok(splitText.includes('The Hebrew numbers this as Psalm 46:2-4') && splitLinks[0] === BG + 'Psalm%2046%3A1-3&version=NLT' &&
+     splitLinks[1] === BG + 'Psalm%2046%3A2-4&version=WLC' && splitLinks[2] === STEP + 'OSHB|reference=Psa.46.1-3&options=HVLUN&display=INTERLINEAR' &&
+     splitLinks.length === 3, 'split side-by-side links when numbering differs');
+  await p4.evaluate(() => document.getElementById('toast').classList.remove('show')); await p4.waitForTimeout(400);
+  await p4.screenshot({ path: 'screenshots/07-compare-verse.png' });
+  await p4.click('details.about-orig summary');
+  const about = await p4.textContent('details.about-orig');
+  ok(about.includes('The NLT is a meaning-based (thought-for-thought) translation') && about.includes('counts the title as a verse') &&
+     about.includes('narrow') && about.includes('tour pop-up'), 'about-the-original-languages note');
+  await p4.evaluate(() => document.querySelector('details.about-orig').scrollIntoView({ block: 'center' })); await p4.waitForTimeout(200);
+  await p4.screenshot({ path: 'screenshots/08-about-original.png' });
+  await ctx4.close();
+  await page.click('.tabbar a[data-tab=home]'); await page.click('.tabbar a[data-tab=read]');
   // reminders + ics
   await page.click('.tabbar a[data-tab=more]');
   await page.click('[data-action=new-reminder]');
@@ -117,7 +180,7 @@ const { chromium, devices } = require('playwright-core');
   const fired = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('faithapp:fired:v1'))));
   ok(!fired.includes('a@2020-01-01') && fired.some((k) => k.startsWith('b@')), 'fired-reminder log pruned after 7 days');
   const content = await page.evaluate(() => ({ v: Content.VERSES, g: Content.GRATITUDE_PROMPTS, plan: Content.PLAN.map((d) => d.ref) }));
-  ok(['Philippians 4:11-13', 'Jeremiah 29:4-14', 'Ecclesiastes 4:12', 'Ephesians 5:21-33', 'Psalm 37:3-7', 'Ruth 1:15-18'].every((r) => content.v.includes(r)) &&
+  ok(['Philippians 4:11-13', 'Jeremiah 29:4-14', '1 Peter 3:8-9', 'Ephesians 5:21-33', 'Psalm 37:3-7', 'Ruth 1:15-18'].every((r) => content.v.includes(r)) &&
      !['Philippians 4:13', 'Jeremiah 29:11', 'Matthew 18:19-20', 'Ephesians 5:25', 'Psalm 37:4-5', 'Ruth 1:16-17'].some((r) => content.v.includes(r)) && content.v.length === 70, 'verse list updated');
   ok(content.g.includes('What quality in your partner are you thankful to God for?') && content.g.includes("Is there something hard where you've seen even a glimpse of God's care?"), 'gratitude prompts updated');
   ok(content.plan.includes('Psalm 13') && content.plan.includes('Psalm 133') && content.plan.length === 37, 'reading plan has Psalm 13 and 133 (37 days)');

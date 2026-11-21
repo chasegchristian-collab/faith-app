@@ -67,5 +67,86 @@
     return 'https://www.biblegateway.com/passage/?search=' + encodeURIComponent(ref) + '&version=NLT';
   }
 
-  window.Content = { VERSES: VERSES, GRATITUDE_PROMPTS: GRATITUDE_PROMPTS, PLAN: PLAN, bibleGatewayUrl: bibleGatewayUrl };
+  /* ---------- Compare with the original language (links only, no text stored) ---------- */
+  // Book name (as written in our refs) -> [OSIS code used by STEP Bible, testament].
+  const BOOKS = {};
+  [['Genesis', 'Gen'], ['Exodus', 'Exod'], ['Leviticus', 'Lev'], ['Numbers', 'Num'], ['Deuteronomy', 'Deut'],
+   ['Joshua', 'Josh'], ['Judges', 'Judg'], ['Ruth', 'Ruth'], ['1 Samuel', '1Sam'], ['2 Samuel', '2Sam'],
+   ['1 Kings', '1Kgs'], ['2 Kings', '2Kgs'], ['1 Chronicles', '1Chr'], ['2 Chronicles', '2Chr'], ['Ezra', 'Ezra'],
+   ['Nehemiah', 'Neh'], ['Esther', 'Esth'], ['Job', 'Job'], ['Psalm', 'Psa'], ['Psalms', 'Psa'], ['Proverbs', 'Prov'],
+   ['Ecclesiastes', 'Eccl'], ['Song of Songs', 'Song'], ['Song of Solomon', 'Song'], ['Isaiah', 'Isa'], ['Jeremiah', 'Jer'],
+   ['Lamentations', 'Lam'], ['Ezekiel', 'Ezek'], ['Daniel', 'Dan'], ['Hosea', 'Hos'], ['Joel', 'Joel'], ['Amos', 'Amos'],
+   ['Obadiah', 'Obad'], ['Jonah', 'Jonah'], ['Micah', 'Mic'], ['Nahum', 'Nah'], ['Habakkuk', 'Hab'], ['Zephaniah', 'Zeph'],
+   ['Haggai', 'Hag'], ['Zechariah', 'Zech'], ['Malachi', 'Mal']
+  ].forEach(function (b) { BOOKS[b[0]] = [b[1], 'OT']; });
+  [['Matthew', 'Matt'], ['Mark', 'Mark'], ['Luke', 'Luke'], ['John', 'John'], ['Acts', 'Acts'], ['Romans', 'Rom'],
+   ['1 Corinthians', '1Cor'], ['2 Corinthians', '2Cor'], ['Galatians', 'Gal'], ['Ephesians', 'Eph'], ['Philippians', 'Phil'],
+   ['Colossians', 'Col'], ['1 Thessalonians', '1Thess'], ['2 Thessalonians', '2Thess'], ['1 Timothy', '1Tim'],
+   ['2 Timothy', '2Tim'], ['Titus', 'Titus'], ['Philemon', 'Phlm'], ['Hebrews', 'Heb'], ['James', 'Jas'], ['1 Peter', '1Pet'],
+   ['2 Peter', '2Pet'], ['1 John', '1John'], ['2 John', '2John'], ['3 John', '3John'], ['Jude', 'Jude'], ['Revelation', 'Rev']
+  ].forEach(function (b) { BOOKS[b[0]] = [b[1], 'NT']; });
+
+  // English (NLT) ref -> Hebrew (WLC) ref, where the Hebrew numbers verses differently
+  // (psalm titles counted as verse 1; different chapter breaks in Joel and Malachi). Verified by the Fact-Checker.
+  // General rule for anything not listed: same numbering. Whole psalm chapters always match (only the verse numbers
+  // inside shift), so the reading-plan psalms (8, 19, 34, 46, 51, 63 have separate title verses) need no entry.
+  // Audit of every OT ref in VERSES: only Psalm 34:8, 46:1-3 and 46:10 differ. Psalms 23, 37, 121, 133, 139 and 143
+  // also have titles, but in Hebrew those short titles sit inside verse 1, so numbering matches (Fact-Checker: "every
+  // other OT ref lines up"). TODO: if you add a new psalm verse, check its Hebrew numbering before relying on the rule.
+  // TODO: whole chapters Joel 2 (WLC 2:1-27 + 3:1-5), Joel 3 and Malachi 4 also shift; add them here if ever used.
+  const WLC_OVERRIDES = {
+    'Psalm 34:8': 'Psalm 34:9',
+    'Psalm 46:1-3': 'Psalm 46:2-4',
+    'Psalm 46:10': 'Psalm 46:11',
+    'Joel 2:28': 'Joel 3:1',
+    'Joel 2:28-32': 'Joel 3:1-5',
+    'Malachi 4:2': 'Malachi 3:20',
+    'Malachi 4:1-6': 'Malachi 3:19-24'
+  };
+
+  // "Song of Songs 8:6-7" -> { book, osis, testament, ch, v1, v2 }; null if it can't be parsed.
+  function parseRef(ref) {
+    const m = /^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/.exec(String(ref).trim());
+    if (!m || !BOOKS[m[1]]) return null;
+    return { book: m[1], osis: BOOKS[m[1]][0], testament: BOOKS[m[1]][1], ch: m[2], v1: m[3] || null, v2: m[4] || null };
+  }
+  function testament(ref) { const p = parseRef(ref); return p ? p.testament : null; }
+  function originalLanguage(ref) { const t = testament(ref); return t === 'OT' ? 'Hebrew' : t === 'NT' ? 'Greek' : null; }
+  function wlcRef(ref) { return WLC_OVERRIDES[ref] || ref; }
+  function osisRef(ref) {
+    const p = parseRef(ref);
+    if (!p) return null;
+    return p.osis + '.' + p.ch + (p.v1 ? '.' + p.v1 + (p.v2 ? '-' + p.v2 : '') : '');
+  }
+  function bgParallelUrl(ref, versions) {
+    return 'https://www.biblegateway.com/passage/?search=' + encodeURIComponent(ref) + '&version=' + versions;
+  }
+  // Links for the "Hebrew"/"Greek" chip. Returns null for refs we can't parse.
+  // side: one Bible Gateway parallel link (NLT + WLC/SBLGNT) when numbering matches. When the Hebrew numbering differs,
+  //   one search can't line both up, so `side` is null and `split` gives two links: NLT at the English ref and
+  //   WLC at the Hebrew ref.
+  // step: STEP Bible interlinear (English side is the BSB). Uses the English ref; STEP maps Hebrew numbering itself.
+  function compareLinks(ref) {
+    const p = parseRef(ref);
+    if (!p) return null;
+    const ot = p.testament === 'OT';
+    const heb = ot ? wlcRef(ref) : ref;
+    const differs = heb !== ref;
+    return {
+      ref: ref,
+      testament: p.testament,
+      language: ot ? 'Hebrew' : 'Greek',
+      hebrewRef: ot ? heb : null,
+      side: differs ? null : bgParallelUrl(ref, ot ? 'NLT;WLC' : 'NLT;SBLGNT'),
+      split: differs ? { nlt: bgParallelUrl(ref, 'NLT'), wlc: bgParallelUrl(heb, 'WLC') } : null,
+      step: 'https://www.stepbible.org/?q=version=BSB|version=' + (ot ? 'OSHB' : 'SBLG') + '|reference=' + osisRef(ref) +
+        '&options=HVLUN&display=INTERLINEAR'
+    };
+  }
+
+  window.Content = {
+    VERSES: VERSES, GRATITUDE_PROMPTS: GRATITUDE_PROMPTS, PLAN: PLAN, bibleGatewayUrl: bibleGatewayUrl,
+    BOOKS: BOOKS, WLC_OVERRIDES: WLC_OVERRIDES, parseRef: parseRef, testament: testament, originalLanguage: originalLanguage,
+    wlcRef: wlcRef, osisRef: osisRef, compareLinks: compareLinks
+  };
 })();

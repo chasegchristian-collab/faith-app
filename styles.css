@@ -189,3 +189,25 @@ dialog h2 { margin-top: 0; }
 .hidden { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Compare with the original language (Hebrew/Greek chip + inline links panel) */
+.ref-line { display: flex; align-items: center; column-gap: .35rem; flex-wrap: wrap; }
+.chip-lang {
+  min-height: 44px; min-width: 44px; padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--muted); font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer;
+}
+.cmp-host > .chip-lang { margin-top: .5rem; }
+.chip-lang[aria-expanded="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+.chip-lang[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); }
+.cmp-panel { display: grid; gap: .4rem; margin: .5rem 0 .3rem; padding: .5rem; background: var(--surface-2); border-radius: 14px; }
+.cmp-panel .cmp-link {
+  display: flex; flex-direction: column; justify-content: center; min-height: var(--tap); padding: .45rem .8rem; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border); text-decoration: none; font-weight: 700; line-height: 1.3;
+}
+.plan-day .cmp-panel a { line-height: 1.3; min-height: var(--tap); }
+.cmp-panel .cmp-link .small { font-weight: 500; }
+.cmp-note { margin: .1rem .2rem; }
+.about-orig { margin: .2rem 0 .8rem; }
+.about-orig summary { min-height: 44px; display: flex; align-items: center; gap: .4rem; cursor: pointer; color: var(--muted); font-weight: 600; font-size: .9rem; }
+.about-orig[open] { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 1rem .6rem; }
+.plan-day:has(.chip-lang) { gap: .55rem; }
