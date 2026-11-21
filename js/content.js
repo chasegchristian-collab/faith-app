@@ -13,7 +13,7 @@
     'James 5:16', 'Psalm 46:1-3', 'Psalm 46:10', 'Psalm 37:3-7', 'Psalm 34:8',
     'Psalm 91:1-2', 'Psalm 118:24', 'Psalm 121:1-2', 'Psalm 139:13-14', 'Psalm 143:8',
     'Isaiah 41:10', 'Isaiah 26:3', 'Lamentations 3:22-23', 'Zephaniah 3:17', 'Micah 6:8',
-    'Matthew 11:28-30', 'Ecclesiastes 4:12', 'Matthew 5:14-16', 'John 13:34-35', 'John 14:27',
+    'Matthew 11:28-30', '1 Peter 3:8-9', 'Matthew 5:14-16', 'John 13:34-35', 'John 14:27',
     'John 15:5', 'John 15:12-13', 'Romans 5:8', 'Romans 12:2', 'Romans 15:13',
     '2 Corinthians 5:17', '2 Corinthians 12:9', 'Galatians 5:22-23', 'Galatians 6:2', 'Ephesians 3:20-21',
     'Ephesians 5:21-33', 'Philippians 1:6', 'Philippians 2:3-4', 'Philippians 4:11-13', 'Colossians 3:23',
