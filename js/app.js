@@ -16,7 +16,8 @@
     return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
   }
   function verseOfDay(d) { return C.VERSES[dayNumber(d) % C.VERSES.length]; }
-  function promptOfDay(d) { return C.GRATITUDE_PROMPTS[(dayNumber(d) * 7) % C.GRATITUDE_PROMPTS.length]; }
+  // Tonight's prompt follows the 4 AM "faith day", so it doesn't change at midnight mid-entry.
+  function promptOfDay(d) { d = d || new Date(S.faithDayKey() + 'T12:00:00'); return C.GRATITUDE_PROMPTS[(dayNumber(d) * 7) % C.GRATITUDE_PROMPTS.length]; }
   function bgLink(ref, label, cls) {
     return '<a class="' + (cls || '') + '" href="' + esc(C.bibleGatewayUrl(ref)) + '" target="_blank" rel="noopener noreferrer">' +
       esc(label || ref) + '<span class="sr-only"> (opens Bible Gateway, NLT, in a new tab)</span></a>';
@@ -45,7 +46,8 @@
     return '<button type="button" class="mic" data-action="mic" data-target="' + target + '" aria-label="Speak instead of typing">' + MIC_SVG + '</button>';
   }
   function voiceHint() {
-    return SR ? '' : '<p class="hint">Voice tip: this browser can\'t do in-app voice typing, but you can tap the 🎤 on your keyboard to dictate.</p>';
+    return SR ? '<p class="hint">Note: in some browsers, voice is processed by the browser’s online speech service.</p>'
+      : '<p class="hint">Voice tip: this browser can\'t do in-app voice typing, but you can tap the 🎤 on your keyboard to dictate.</p>';
   }
   function textField(id, label, opts) {
     opts = opts || {};
@@ -76,6 +78,8 @@
     rec = new SR(); recBtn = btn;
     rec.lang = navigator.language || 'en-US';
     rec.interimResults = true; rec.continuous = false;
+    // Ask for on-device recognition where the browser supports it (falls back to the browser's service).
+    if ('processLocally' in rec) { try { rec.processLocally = true; } catch (e) { /* ignore */ } }
     rec.onresult = (e) => {
       let text = '';
       for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
@@ -132,7 +136,8 @@
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
     const todayKey = S.dateKey();
-    const g = S.gratitude().filter((x) => x.date === todayKey);
+    const tonightKey = S.faithDayKey(); // before 4 AM still counts as "tonight"
+    const g = S.gratitude().filter((x) => x.date === tonightKey);
     const p = partners();
     const gStatus = p.map((name) => {
       const done = g.some((x) => x.author === name);
@@ -201,7 +206,9 @@
         : '<p class="empty">' + (f === 'active' ? 'No active requests yet. Add the first one together.' : 'Answered prayers will show up here with the date and your testimony.') + '</p>') +
       '<button type="button" class="btn block ' + (S.didToday('prayer') ? 'done' : 'good') + '" data-action="prayed-today" style="margin-top:1rem">' +
         (S.didToday('prayer') ? '✓ We prayed today' : 'We prayed today') + '</button>' +
-      '<p class="hint">Shared between ' + esc(p[0]) + ' and ' + esc(p[1]) + ' via Sync (More tab).</p>';
+      '<p class="hint">' + (S.sync.active()
+        ? 'Shared live between ' + esc(p[0]) + ' and ' + esc(p[1]) + '.'
+        : 'Shared between ' + esc(p[0]) + ' and ' + esc(p[1]) + ' once you connect your phones (More tab).') + '</p>';
   }
 
   function viewRead() {
@@ -225,8 +232,9 @@
         bgLink(ref, 'Read it in the NLT ↗', 'btn primary block') +
         '<p class="hint">Both of your phones show the same verse each day. Text opens on Bible Gateway (NLT).</p></section>' +
       '<h2>Reading plan: John + Psalms</h2>' +
-      '<p class="muted small">' + done + ' of ' + C.PLAN.length + ' days · ' + pct + '%</p>' +
-      '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Reading plan progress"><span style="width:' + pct + '%"></span></div>' +
+      '<p class="muted small">Shared progress for both of you: ' + done + ' of ' + C.PLAN.length + ' days · ' + pct + '%</p>' +
+      '<p class="hint">A check-off by either of you counts for you both.</p>' +
+      '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Shared reading plan progress"><span style="width:' + pct + '%"></span></div>' +
       '<div class="card">' + rows + '</div>';
   }
 
@@ -256,9 +264,9 @@
     const rems = S.reminders().sort((a, b) => a.time.localeCompare(b.time));
     const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
     const permText = {
-      granted: 'Notifications are on for this device (they fire while the app is open or recently used).',
+      granted: 'Notifications are on for this device. They fire only while the app is open, or catch up if you open it within 2 hours.',
       denied: 'Notifications are blocked in this browser’s settings. Use “Add to calendar” for reliable alerts.',
-      default: 'Turn on notifications to get a ping while the app is open.',
+      default: 'Turn on notifications to get a ping while the app is open (or a catch-up if you open it within 2 hours).',
       unsupported: 'This browser doesn’t support web notifications here. On iPhone they need iOS 16.4+ and the app added to your Home Screen. “Add to calendar” always works.'
     }[perm];
     const d = S.device();
@@ -266,21 +274,26 @@
       '<h2 id="rem-h">Reminders for each other</h2>' +
       '<button type="button" class="btn primary block" data-action="new-reminder">+ Add a reminder</button>' +
       '<p class="hint">' + esc(permText) + '</p>' +
+      '<p class="hint">“Add to calendar” usually works even when the app is closed. Pausing or deleting a reminder here doesn’t remove a calendar event you already added; delete it in your calendar too.</p>' +
       (perm === 'default' ? '<button type="button" class="btn block" data-action="enable-notifs" style="margin-top:.5rem">Turn on notifications</button>' : '') +
       (rems.length ? '<ul class="list">' + rems.map((r) =>
         '<li class="item"><div class="row spread"><h3>' + esc(r.title) + '</h3><span class="badge' + (r.enabled ? ' good' : '') + '">' + (r.enabled ? 'On' : 'Off') + '</span></div>' +
         '<p class="meta">' + esc(fmtTime(r.time)) + ' · ' + (r.repeat === 'daily' ? 'every day' : 'once on ' + esc(fmtDate(r.date))) + ' · for ' + esc(r.forWhom) + ' · set by ' + esc(r.createdBy) + '</p>' +
         '<div class="actions"><button type="button" class="btn small" data-action="ics" data-id="' + r.id + '">📅 Add to calendar</button>' +
+        '<a class="btn small" href="' + esc(googleCalUrl(r)) + '" target="_blank" rel="noopener noreferrer">Google Calendar ↗</a>' +
         '<button type="button" class="btn small" data-action="toggle-reminder" data-id="' + r.id + '">' + (r.enabled ? 'Pause' : 'Resume') + '</button>' +
         '<button type="button" class="btn small danger" data-action="delete-reminder" data-id="' + r.id + '">Delete</button></div></li>').join('') + '</ul>'
         : '<p class="empty">No reminders yet. Try “Pray together” at 9:00 PM.</p>') +
 
-      '<h2>Sync between your phones</h2>' +
-      '<div class="card stack"><p class="small">There’s no cloud account yet, so each phone keeps its own copy. To sync: one of you taps <strong>Share</strong> (or Export) and sends the file; the other taps <strong>Import</strong>. Imports <em>merge</em> — nothing gets lost.</p>' +
+      syncSection() +
+      '<h2>' + (S.sync.configured() ? 'Backup file' : 'Sync between your phones') + '</h2>' +
+      '<div class="card stack"><p class="small">' + (S.sync.configured()
+        ? 'You can also send a backup file. One of you taps <strong>Share</strong> (or Download) and sends it; the other taps <strong>Import</strong>. Imports <em>merge</em>, so nothing gets lost.'
+        : 'Live syncing isn’t turned on in this copy of the app, so each phone keeps its own copy. To sync: one of you taps <strong>Share</strong> (or Download) and sends the file; the other taps <strong>Import</strong>. Imports <em>merge</em>, so nothing gets lost.') + '</p>' +
         '<button type="button" class="btn primary block" data-action="share">Share my data with ' + esc(other()) + '</button>' +
         '<button type="button" class="btn block" data-action="export">Download backup file (.json)</button>' +
         '<label class="btn block" for="import-file" style="margin:0">Import a file from ' + esc(other()) + '</label>' +
-        '<input id="import-file" type="file" accept="application/json,.json" class="hidden">' +
+        '<input id="import-file" type="file" accept="application/json,.json,.txt,text/plain" class="hidden">' +
         (d.lastExport ? '<p class="hint">Last shared/exported on this phone: ' + esc(fmtDate(d.lastExport)) + '</p>' : '') +
       '</div>' +
 
@@ -306,13 +319,15 @@
   }
 
   function viewSetup() {
-    return '<section class="welcome"><img src="icons/icon-192.png" alt=""><h2>Welcome</h2>' +
+    return (isIOSBrowserTab() ? '<div class="card banner" role="note" id="ios-banner"><strong>Add this to your Home Screen first, then set up. Safari tabs can lose data.</strong>' +
+        '<p class="small">Tap Share <span aria-hidden="true">⬆︎</span> → “Add to Home Screen”, then open Together from the new icon.</p></div>' : '') +
+      '<section class="welcome"><img src="icons/icon-192.png" alt=""><h2>Welcome</h2>' +
       '<p class="muted">A quiet place for the two of you to pray, give thanks, and read together.</p></section>' +
       '<form class="card" id="setup-form">' +
         textField('p1', 'First partner', { required: true, placeholder: 'e.g. Christian', value: 'Christian' }) +
         textField('p2', 'Second partner', { required: true, placeholder: 'Their name', value: 'Kendell' }) +
         voiceHint() +
-        '<p class="hint">Setting up from a file your partner sent? Use Import on the More tab after this step.</p>' +
+        '<p class="hint">Joining your partner? Tap Start, then More → “Connect your phones” → “Join with code”. (Or Import a file there.)</p>' +
         '<button type="submit" class="btn primary block" style="margin-top:1rem">Start</button>' +
       '</form>';
   }
@@ -334,6 +349,7 @@
       if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     $('#who-chip').textContent = '👤 ' + me();
+    renderSyncBadge();
     // Preserve an in-progress gratitude draft across re-renders.
     const draft = $('#g-text') ? $('#g-text').value : '';
     main.innerHTML = setup ? viewSetup() : VIEWS[tab]();
@@ -375,15 +391,47 @@
         notify(r.title, 'Reminder from ' + r.createdBy + ' · Together in Faith');
       }
     });
+    // Keep only the last 7 days of "already fired" marks.
+    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 7);
+    const cutKey = S.dateKey(cutoff);
+    Object.keys(fired).forEach((k) => { const day = k.slice(k.lastIndexOf('@') + 1); if (!(day >= cutKey)) delete fired[k]; });
     localStorage.setItem(FIRED_KEY, JSON.stringify(fired));
   }
-  function icsFor(r) {
-    const pad = (n) => String(n).padStart(2, '0');
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const icsLocal = (d) => d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
+  function reminderStart(r) {
     const [h, m] = r.time.split(':').map(Number);
-    let start = r.repeat === 'once' && r.date ? new Date(r.date + 'T00:00:00') : new Date();
+    const start = r.repeat === 'once' && r.date ? new Date(r.date + 'T00:00:00') : new Date();
     start.setHours(h, m, 0, 0);
     if (r.repeat === 'daily' && start < new Date()) start.setDate(start.getDate() + 1);
-    const local = (d) => d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + 'T' + pad(d.getHours()) + pad(d.getMinutes()) + '00';
+    return start;
+  }
+  // RFC 5545: lines longer than 75 octets are folded with CRLF + one space (never splitting a UTF-8 character).
+  function foldLine(line) {
+    const enc = new TextEncoder();
+    if (enc.encode(line).length <= 75) return line;
+    const parts = []; let cur = '', curLen = 0, limit = 75;
+    for (const ch of line) {
+      const n = enc.encode(ch).length;
+      if (curLen + n > limit) { parts.push(cur); cur = ''; curLen = 0; limit = 74; }
+      cur += ch; curLen += n;
+    }
+    parts.push(cur);
+    return parts.join('\r\n ');
+  }
+  function googleCalUrl(r) {
+    const start = reminderStart(r), end = new Date(start.getTime() + 15 * 60000);
+    let url = 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+      '&text=' + encodeURIComponent(r.title) +
+      '&dates=' + icsLocal(start) + '/' + icsLocal(end) +
+      '&details=' + encodeURIComponent('Reminder for ' + r.forWhom + ' from ' + r.createdBy + ' (Together in Faith)');
+    try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (tz) url += '&ctz=' + encodeURIComponent(tz); } catch (e) { /* ignore */ }
+    if (r.repeat === 'daily') url += '&recur=' + encodeURIComponent('RRULE:FREQ=DAILY');
+    return url;
+  }
+  function icsFor(r) {
+    const local = icsLocal;
+    const start = reminderStart(r);
     const end = new Date(start.getTime() + 15 * 60000);
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
     const text = (s) => String(s).replace(/[\\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
@@ -395,7 +443,7 @@
       'SUMMARY:' + text(r.title), 'DESCRIPTION:' + text('Reminder for ' + r.forWhom + ' from ' + r.createdBy + ' (Together in Faith)'),
       'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + text(r.title), 'TRIGGER:PT0M', 'END:VALARM',
       'END:VEVENT', 'END:VCALENDAR'
-    ].filter(Boolean).join('\r\n');
+    ].filter(Boolean).map(foldLine).join('\r\n') + '\r\n';
   }
   function download(filename, content, type) {
     const blob = new Blob([content], { type: type });
@@ -406,11 +454,12 @@
   }
 
   /* ---------- sync ---------- */
-  function backupName() { return 'together-' + me().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + S.dateKey() + '.json'; }
+  function backupName(ext) { return 'together-' + (me().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'backup') + '-' + S.dateKey() + (ext || '.json'); }
   function markExported() { const d = S.device(); d.lastExport = new Date().toISOString(); localStorage.setItem('faithapp:device:v1', JSON.stringify(d)); }
   async function shareData() {
     const json = JSON.stringify(S.exportData(), null, 2);
-    const file = new File([json], backupName(), { type: 'application/json' });
+    // Shared as .txt / text/plain: Chrome on Android refuses to share .json files.
+    const file = new File([json], backupName('.txt'), { type: 'text/plain' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'Together in Faith sync', text: 'Open Together in Faith → More → Import, and pick this file.' });
@@ -431,6 +480,98 @@
     };
     reader.readAsText(file);
   }
+
+  /* ---------- live sync UI ---------- */
+  function syncStatusText(st) {
+    st = st || S.sync.status();
+    if (!S.sync.configured()) return 'Live sync not set up';
+    if (!S.sync.active()) return 'Not connected';
+    if (st.state === 'offline') return 'Offline · changes saved on this phone';
+    if (st.state === 'error') return 'Sync problem · will retry';
+    if (st.state === 'syncing' && !st.lastOk) return 'Syncing…';
+    if (st.lastOk) {
+      const mins = Math.floor((Date.now() - Date.parse(st.lastOk)) / 60000);
+      return mins < 1 ? 'Synced just now' : mins < 60 ? 'Synced ' + mins + ' min ago' : 'Synced ' + fmtDate(st.lastOk);
+    }
+    return 'Syncing…';
+  }
+  function syncStateClass(st) {
+    st = st || S.sync.status();
+    if (!S.sync.active()) return 'off';
+    return st.state === 'offline' || st.state === 'error' ? 'warn' : 'good';
+  }
+  function renderSyncBadge() {
+    const el = $('#sync-status'); if (!el) return;
+    const show = S.sync.active() && S.isSetUp();
+    el.classList.toggle('hidden', !show);
+    if (show) { el.textContent = syncStatusText(); el.dataset.state = syncStateClass(); }
+    const more = $('#sync-status-more'); if (more) { more.textContent = syncStatusText(); more.dataset.state = syncStateClass(); }
+  }
+  function syncSection() {
+    if (!S.sync.configured()) return '';
+    const active = S.sync.active();
+    const code = S.sync.code();
+    return '<h2>Connect your phones</h2>' +
+      '<div class="card stack" id="sync-card">' +
+        '<p class="small">Status: <strong class="sync-status" id="sync-status-more" data-state="' + syncStateClass() + '">' + esc(syncStatusText()) + '</strong></p>' +
+        (active
+          ? '<p class="small">Prayers, gratitude, reminders, reading and your names sync automatically between this phone and ' + esc(other()) + '’s. Works offline too: changes upload when you’re back online.</p>' +
+            '<button type="button" class="btn block" data-action="sync-show-code">' + (state.showCode ? 'Hide couple code' : 'Show couple code') + '</button>' +
+            (state.showCode ? '<p class="couple-code" id="couple-code" aria-label="Couple code">' + esc(S.sync.formatCode(code)) + '</p>' +
+              '<p class="hint">Anyone with this code can see and change your shared data. Only share it with ' + esc(other()) + '.</p>' +
+              '<div class="row"><button type="button" class="btn primary" data-action="sync-share-code">Share code</button><button type="button" class="btn" data-action="sync-copy-code">Copy</button></div>' : '') +
+            '<button type="button" class="btn block" data-action="sync-now">Sync now</button>' +
+            '<button type="button" class="btn block danger" data-action="sync-disconnect">Disconnect this phone</button>'
+          : '<p class="small">Connect once and everything you add shows up on both phones within seconds.</p>' +
+            '<p class="small"><strong>One phone:</strong> tap “Create couple code” and send the code to ' + esc(other()) + '. <strong>Other phone:</strong> tap “Join with code” and paste it. Nothing already on either phone is lost; it’s merged.</p>' +
+            '<button type="button" class="btn primary block" data-action="sync-create">Create couple code</button>' +
+            '<button type="button" class="btn block" data-action="sync-join">Join with code</button>') +
+      '</div>';
+  }
+  async function shareCode() {
+    const code = S.sync.formatCode(S.sync.code());
+    const text = 'Our Together in Faith couple code: ' + code + '\nOpen the app → More → Connect your phones → Join with code.';
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Together in Faith couple code', text: text }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    copyCode();
+  }
+  async function copyCode() {
+    const code = S.sync.formatCode(S.sync.code());
+    try { await navigator.clipboard.writeText(code); toast('Code copied'); }
+    catch (e) { state.showCode = true; render(); toast('Copy the code shown on screen.'); }
+  }
+  function joinDialog() {
+    openDialog('<h2 id="dialog-title">Join with code</h2>' +
+      '<p class="small">Paste or type the code from ' + esc(other()) + '’s phone. Dashes and spaces don’t matter.</p>' +
+      '<label for="join-code">Couple code</label><input type="text" id="join-code" name="join-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH-…" required>' +
+      '<p class="hint">Anything already on this phone is kept and merged with ' + esc(other()) + '’s data.</p>' +
+      '<div class="dialog-actions"><button class="btn primary" value="ok">Join</button><button class="btn" value="cancel" formnovalidate>Cancel</button></div>',
+      (fd) => {
+        try { S.sync.join(String(fd.get('join-code') || '')); }
+        catch (e) { toast(e.message, 4500); return false; }
+        toast('Connected! Syncing now…'); setTimeout(render, 0);
+      });
+  }
+  function isIOSBrowserTab() {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return ios && navigator.standalone === false;
+  }
+  // Re-render when the partner's changes arrive, but never while someone is typing or a dialog is open.
+  let pendingRemoteRender = false;
+  function busyEditing() {
+    const a = document.activeElement;
+    const dlg = $('#dialog');
+    return (dlg && dlg.open) || (a && main.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+  }
+  function remoteRender() {
+    if (busyEditing()) { pendingRemoteRender = true; return; }
+    pendingRemoteRender = false;
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+  }
+  document.addEventListener('focusout', () => { if (pendingRemoteRender) setTimeout(() => { if (pendingRemoteRender) remoteRender(); }, 300); });
+  $('#dialog').addEventListener('close', () => { if (pendingRemoteRender) setTimeout(remoteRender, 50); });
 
   /* ---------- events ---------- */
   let deferredInstall = null;
@@ -488,13 +629,19 @@
           textField('rm-title', 'Reminder', { required: true, placeholder: 'e.g. Pray together', value: 'Pray together' }) +
           '<label for="rm-time">Time</label><input type="time" id="rm-time" name="rm-time" value="21:00" required>' +
           '<label for="rm-repeat">Repeat</label><select id="rm-repeat" name="rm-repeat"><option value="daily">Every day</option><option value="once">Just once</option></select>' +
-          '<label for="rm-date">Date (for “Just once”)</label><input type="date" id="rm-date" name="rm-date" value="' + S.dateKey() + '">' +
+          '<label for="rm-date">Date (for “Just once”)</label><input type="date" id="rm-date" name="rm-date" value="' + S.dateKey() + '" min="' + S.dateKey() + '">' +
           '<label for="rm-for">For</label><select id="rm-for" name="rm-for"><option>Both</option><option>' + esc(p[0]) + '</option><option>' + esc(p[1]) + '</option></select>' +
           '<p class="hint">Tip: after saving, tap “Add to calendar” so it rings even when the app is closed.</p>' +
           '<div class="dialog-actions"><button class="btn primary" value="ok">Save reminder</button><button class="btn" value="cancel" formnovalidate>Cancel</button></div>',
           (fd) => {
             const title = String(fd.get('rm-title') || '').trim(), time = fd.get('rm-time');
             if (!title || !time) { toast('Add a title and time.'); return false; }
+            if (fd.get('rm-repeat') === 'once') {
+              const day = String(fd.get('rm-date') || '');
+              if (!day) { toast('Pick a date for a one-time reminder.'); return false; }
+              const when = new Date(day + 'T' + time + ':00');
+              if (isNaN(when) || when <= new Date()) { toast('That date and time has already passed. Pick a time in the future.', 4000); return false; }
+            }
             S.addReminder({ title: title, time: time, repeat: fd.get('rm-repeat'), date: fd.get('rm-date'), forWhom: fd.get('rm-for') });
             toast('Reminder saved'); setTimeout(render, 0);
           });
@@ -504,17 +651,32 @@
       case 'delete-reminder': if (confirm('Delete this reminder?')) { S.deleteReminder(id); render(); } break;
       case 'ics': {
         const r = S.reminders().find((x) => x.id === id);
-        if (r) { download(r.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.ics', icsFor(r), 'text/calendar'); toast('Open the file to add it to your calendar.'); }
+        if (r) {
+          const slug = r.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+          download((slug || 'reminder') + '.ics', icsFor(r), 'text/calendar'); toast('Open the file to add it to your calendar.');
+        }
         break;
       }
       case 'enable-notifs':
         if ('Notification' in window) Notification.requestPermission().then((res) => { toast(res === 'granted' ? 'Notifications on' : 'Notifications not allowed'); render(); });
         break;
       case 'share': shareData(); break;
+      case 'sync-create': {
+        if (S.sync.active() && !confirm('This phone is already connected. Make a new code? ' + other() + ' would need to join again.')) break;
+        S.sync.createCode(); state.showCode = true; render(); toast('Code created. Now send it to ' + other() + '.'); break;
+      }
+      case 'sync-share-code': shareCode(); break;
+      case 'sync-show-code': state.showCode = !state.showCode; render(); break;
+      case 'sync-copy-code': copyCode(); break;
+      case 'sync-join': joinDialog(); break;
+      case 'sync-now': S.sync.syncNow(); toast('Syncing…', 1200); break;
+      case 'sync-disconnect':
+        if (confirm('Disconnect this phone? Everything stays on this phone, but changes will stop syncing with ' + other() + '.')) { S.sync.disconnect(); state.showCode = false; render(); toast('Disconnected. Your data is still on this phone.'); }
+        break;
       case 'export': download(backupName(), JSON.stringify(S.exportData(), null, 2), 'application/json'); markExported(); toast('Backup downloaded'); render(); break;
       case 'install': if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; } break;
       case 'reset':
-        if (confirm('Erase ALL prayers, entries and settings on this phone? Export a backup first if unsure.')) { S.resetAll(); location.hash = '#home'; render(); }
+        if (confirm('Erase ALL prayers, entries and settings on this phone? This also disconnects live sync on this phone (' + other() + '’s phone keeps its copy). Export a backup first if unsure.')) { S.resetAll(); location.hash = '#home'; render(); }
         break;
     }
   });
@@ -554,11 +716,14 @@
   window.addEventListener('storage', (e) => { if (e.key && e.key.indexOf('faithapp:data') === 0) { S.init(); render(); } });
   checkReminders();
   setInterval(checkReminders, 30000);
+  S.sync.onStatus((st, remoteChanged) => { if (remoteChanged) remoteRender(); else renderSyncBadge(); });
+  S.sync.start();
+  setInterval(renderSyncBadge, 30000); // keep "Synced x min ago" fresh
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); render(); } });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW registration failed', e)));
   }
 
   // Exposed for tests / debugging.
-  window.FaithApp = { verseOfDay: verseOfDay, promptOfDay: promptOfDay, icsFor: icsFor };
+  window.FaithApp = { verseOfDay: verseOfDay, promptOfDay: promptOfDay, icsFor: icsFor, googleCalUrl: googleCalUrl, syncStatusText: syncStatusText };
 })();

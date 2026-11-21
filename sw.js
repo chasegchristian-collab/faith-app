@@ -1,8 +1,8 @@
 /* Service worker: caches the app shell so it opens offline. Bump VERSION after editing any file. */
-const VERSION = 'faith-app-v2';
+const VERSION = 'faith-app-v3';
 const SHELL = [
   './', './index.html', './styles.css', './manifest.webmanifest',
-  './js/content.js', './js/store.js', './js/app.js',
+  './js/config.js', './js/content.js', './js/store.js', './js/app.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
   './icons/maskable-512.png', './icons/apple-touch-icon.png'
 ];
@@ -20,14 +20,18 @@ self.addEventListener('activate', (e) => {
 });
 
 // Network-first for same-origin files (so updates show up), cache fallback when offline.
+// Anything cross-origin (the Supabase sync API, Bible Gateway, Google Calendar) and any non-GET request
+// is left alone: the browser goes straight to the network and nothing is cached.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(req)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put(req, copy));
+        if (res.ok) { // never cache 404s / server errors
+          const copy = res.clone();
+          caches.open(VERSION).then((c) => c.put(req, copy));
+        }
         return res;
       })
       .catch(() => caches.match(req, { ignoreSearch: true })

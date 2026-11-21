@@ -54,6 +54,17 @@ p { margin: .4rem 0; }
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
 }
 .topbar-title { font-size: 1.25rem; margin: 0; }
+.topbar-left { display: flex; flex-direction: column; min-width: 0; }
+.sync-status { font-size: .72rem; font-weight: 600; color: var(--muted); }
+.sync-status[data-state="good"]::before { content: "● "; color: var(--good); }
+.sync-status[data-state="warn"]::before { content: "● "; color: var(--danger); }
+.sync-status[data-state="off"]::before { content: "○ "; }
+.couple-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.15rem; font-weight: 700; letter-spacing: .06em;
+  text-align: center; padding: .7rem; margin: .3rem 0; border: 1px dashed var(--accent); border-radius: var(--radius);
+  word-break: break-all; user-select: all; -webkit-user-select: all;
+}
+.card.banner { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
 .who-chip {
   min-height: 44px; padding: .3rem .9rem; border-radius: 999px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font: inherit; font-size: .85rem;
