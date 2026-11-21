@@ -211,3 +211,5 @@ dialog h2 { margin-top: 0; }
 .about-orig summary { min-height: 44px; display: flex; align-items: center; gap: .4rem; cursor: pointer; color: var(--muted); font-weight: 600; font-size: .9rem; }
 .about-orig[open] { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 1rem .6rem; }
 .plan-day:has(.chip-lang) { gap: .55rem; }
+.plan-day.open { align-items: flex-start; }
+.plan-day.open .check { margin-top: .15rem; }

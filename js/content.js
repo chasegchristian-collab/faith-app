@@ -89,7 +89,8 @@
   // English (NLT) ref -> Hebrew (WLC) ref, where the Hebrew numbers verses differently
   // (psalm titles counted as verse 1; different chapter breaks in Joel and Malachi). Verified by the Fact-Checker.
   // General rule for anything not listed: same numbering. Whole psalm chapters always match (only the verse numbers
-  // inside shift), so the reading-plan psalms (8, 19, 34, 46, 51, 63 have separate title verses) need no entry.
+  // inside shift), so the reading-plan psalms (8, 13, 19, 34, 46, 51, 63 have separate title verses) need no entry;
+  // PSALM_VERSE_SHIFT below only drives a note in the compare panel.
   // Audit of every OT ref in VERSES: only Psalm 34:8, 46:1-3 and 46:10 differ. Psalms 23, 37, 121, 133, 139 and 143
   // also have titles, but in Hebrew those short titles sit inside verse 1, so numbering matches (Fact-Checker: "every
   // other OT ref lines up"). TODO: if you add a new psalm verse, check its Hebrew numbering before relying on the rule.
@@ -103,6 +104,10 @@
     'Malachi 4:2': 'Malachi 3:20',
     'Malachi 4:1-6': 'Malachi 3:19-24'
   };
+
+  // Whole psalm chapters (in the reading plan) where the Hebrew verse numbers run ahead of the English, because the
+  // Hebrew counts the title as verse 1 (Psalm 51: title + setting = verses 1-2). Verified by the Fact-Checker.
+  const PSALM_VERSE_SHIFT = { 8: 1, 13: 1, 19: 1, 34: 1, 46: 1, 51: 2, 63: 1 };
 
   // "Song of Songs 8:6-7" -> { book, osis, testament, ch, v1, v2 }; null if it can't be parsed.
   function parseRef(ref) {
@@ -137,6 +142,8 @@
       testament: p.testament,
       language: ot ? 'Hebrew' : 'Greek',
       hebrewRef: ot ? heb : null,
+      // Whole-chapter psalms only: how many verses ahead the Hebrew numbering runs (0 = same).
+      verseShift: (p.osis === 'Psa' && !p.v1 && PSALM_VERSE_SHIFT[p.ch]) || 0,
       side: differs ? null : bgParallelUrl(ref, ot ? 'NLT;WLC' : 'NLT;SBLGNT'),
       split: differs ? { nlt: bgParallelUrl(ref, 'NLT'), wlc: bgParallelUrl(heb, 'WLC') } : null,
       step: 'https://www.stepbible.org/?q=version=BSB|version=' + (ot ? 'OSHB' : 'SBLG') + '|reference=' + osisRef(ref) +
@@ -146,7 +153,7 @@
 
   window.Content = {
     VERSES: VERSES, GRATITUDE_PROMPTS: GRATITUDE_PROMPTS, PLAN: PLAN, bibleGatewayUrl: bibleGatewayUrl,
-    BOOKS: BOOKS, WLC_OVERRIDES: WLC_OVERRIDES, parseRef: parseRef, testament: testament, originalLanguage: originalLanguage,
+    BOOKS: BOOKS, WLC_OVERRIDES: WLC_OVERRIDES, PSALM_VERSE_SHIFT: PSALM_VERSE_SHIFT, parseRef: parseRef, testament: testament, originalLanguage: originalLanguage,
     wlcRef: wlcRef, osisRef: osisRef, compareLinks: compareLinks
   };
 })();

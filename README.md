@@ -31,7 +31,7 @@ The Word tab has a collapsed **ⓘ About the original languages** note explainin
 On a phone, Bible Gateway's side-by-side page can show narrow columns, and STEP shows a tour pop-up on the first visit.
 
 **Licensing:** this feature is links only. The app stores and shows no Hebrew, Greek, NLT or BSB text, so no license
-or credit line is needed. Bible Gateway's terms allow deep links but forbid copying or caching their pages, so the app
+or credit line is needed. Bible Gateway's terms don't prohibit deep links but forbid copying or caching their pages, so the app
 uses plain-text labels (no logos) and never fetches their content. If original-language text is ever embedded
 (a possible "Phase 2"), use SBLGNT (CC BY 4.0) and the WLC (public domain, via the Open Scriptures Hebrew Bible)
 with their credit lines; don't embed THGNT (all rights reserved).

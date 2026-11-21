@@ -24,33 +24,54 @@
   }
   // One small chip per scripture ref ("Hebrew" for OT, "Greek" for NT). Tapping it expands a panel (built on demand)
   // with links to compare the NLT with the original language. Links only: no scripture text is stored or shown.
+  // aria-controls/id are only set while the panel exists. Open panels are remembered (per tab + ref) across re-renders.
   let compareSeq = 0;
+  const openCompare = new Set();
   function compareChip(ref) {
     const lang = C.originalLanguage(ref);
     if (!lang) return '';
-    const id = 'cmp-' + (++compareSeq);
-    return '<button type="button" class="chip-lang" data-action="compare" data-ref="' + esc(ref) + '" aria-expanded="false" aria-controls="' + id + '"' +
+    return '<button type="button" class="chip-lang" data-action="compare" data-ref="' + esc(ref) + '" aria-expanded="false"' +
       ' aria-label="Compare ' + esc(ref) + ' with the original ' + lang + '">' + lang + '</button>';
   }
   function comparePanel(ref, id) {
     const L = C.compareLinks(ref);
     const ext = (url, label, note) => '<a class="cmp-link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
-      '<span>' + esc(label) + '\u00a0↗</span>' + (note ? '<span class="small muted">' + esc(note) + '</span>' : '') + '</a>';
-    const side = L.side
+      '<span>' + esc(label) + '\u00a0↗</span>' + (note ? '<span class="small muted">' + esc(note) + '</span>' : '') +
+      '<span class="sr-only"> (opens in a new tab)</span></a>';
+    const shift = L.verseShift
+      ? '<p class="small muted cmp-note">In the Hebrew, verse numbers here run ' + L.verseShift + ' ahead (the title is ' +
+        (L.verseShift === 1 ? 'verse 1' : 'verses 1-' + L.verseShift) + ').</p>' : '';
+    const side = shift + (L.side
       ? ext(L.side, 'Side by side (Bible Gateway)', 'NLT next to the ' + (L.testament === 'OT' ? 'Hebrew (WLC)' : 'Greek (SBLGNT)'))
       : '<p class="small muted cmp-note">The Hebrew numbers this as ' + esc(L.hebrewRef) + ', so open the two separately:</p>' +
-        ext(L.split.nlt, 'English (NLT): ' + ref, 'Bible Gateway') + ext(L.split.wlc, 'Hebrew (WLC): ' + L.hebrewRef, 'Bible Gateway');
+        ext(L.split.nlt, 'English (NLT): ' + ref, 'Bible Gateway') + ext(L.split.wlc, 'Hebrew (WLC): ' + L.hebrewRef, 'Bible Gateway'));
     return '<div class="cmp-panel" id="' + id + '" role="group" aria-label="Compare ' + esc(ref) + ' with the original ' + L.language + '">' +
       side + ext(L.step, 'Word by word (STEP Bible)', 'English side is the BSB, not the NLT') + '</div>';
   }
-  function toggleCompare(btn) {
-    const id = btn.getAttribute('aria-controls');
-    const open = btn.getAttribute('aria-expanded') === 'true';
-    const existing = document.getElementById(id);
-    if (open) { if (existing) existing.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
-    const host = btn.closest('.cmp-host') || btn.parentNode;
-    host.insertAdjacentHTML('beforeend', comparePanel(btn.dataset.ref, id));
+  function compareKey(btn) { return currentTab() + '|' + btn.dataset.ref; }
+  function openComparePanel(btn) {
+    const id = 'cmp-' + (++compareSeq);
+    (btn.closest('.cmp-host') || btn.parentNode).insertAdjacentHTML('beforeend', comparePanel(btn.dataset.ref, id));
+    btn.setAttribute('aria-controls', id);
     btn.setAttribute('aria-expanded', 'true');
+    btn.closest('.plan-day') && btn.closest('.plan-day').classList.add('open');
+  }
+  function toggleCompare(btn) {
+    if (btn.getAttribute('aria-expanded') === 'true') {
+      const panel = document.getElementById(btn.getAttribute('aria-controls'));
+      if (panel) panel.remove();
+      btn.removeAttribute('aria-controls');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.closest('.plan-day') && btn.closest('.plan-day').classList.remove('open');
+      openCompare.delete(compareKey(btn));
+    } else {
+      openComparePanel(btn);
+      openCompare.add(compareKey(btn));
+    }
+  }
+  function restoreCompare() {
+    if (!openCompare.size) return;
+    main.querySelectorAll('.chip-lang').forEach((btn) => { if (openCompare.has(compareKey(btn))) openComparePanel(btn); });
   }
   const ORIGINAL_NOTE = 'The NLT is a meaning-based (thought-for-thought) translation: it translates literally where that\'s clear and ' +
     'gives the sense of a phrase where a literal rendering would confuse. The Hebrew and Greek are the texts translators work from. ' +
@@ -393,6 +414,7 @@
     const draft = $('#g-text') ? $('#g-text').value : '';
     main.innerHTML = setup ? viewSetup() : VIEWS[tab]();
     if (draft && $('#g-text')) $('#g-text').value = draft;
+    if (!setup) restoreCompare();
     if (opts && opts.scroll) window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', () => { stopMic(); render({ scroll: true }); main.focus({ preventScroll: true }); });

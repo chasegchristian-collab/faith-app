@@ -109,14 +109,33 @@ const { chromium, devices } = require('playwright-core');
   ok((await page.locator('.card.accent .chip-lang').innerText()).startsWith(vodLang), 'verse-of-the-day chip: ' + vodLang);
   ok(await page.locator('.plan-day .chip-lang').count() === 37 && await page.locator('.plan-day').first().locator('.chip-lang').count() === 1, 'one chip per plan reference');
   ok(await page.$$eval('.cmp-panel', (n) => n.length) === 0 && !(await page.getAttribute('details.about-orig', 'open')), 'compare panels and the about note start collapsed');
+  ok(await chipP46.getAttribute('aria-controls') === null, 'no aria-controls before the panel exists');
+  const shifts = await page.evaluate(() => ['Psalm 46', 'Psalm 13', 'Psalm 51', 'Psalm 1', 'Psalm 23', 'John 3', 'Psalm 46:10'].map((r) => Content.compareLinks(r).verseShift));
+  ok(shifts.join(',') === '1,1,2,0,0,0,0', 'whole-chapter psalm verse shifts: ' + shifts.join(','));
   await chipP46.click();
   ok(await chipP46.getAttribute('aria-expanded') === 'true', 'chip expands');
+  const ctl = await chipP46.getAttribute('aria-controls');
+  ok(!!ctl && !!(await page.$('#' + ctl + '.cmp-panel')), 'aria-controls points at the open panel');
+  ok((await page.textContent('#' + ctl)).includes('In the Hebrew, verse numbers here run 1 ahead (the title is verse 1).'), 'Psalm 46 shift note');
+  ok(await page.$$eval('#' + ctl + ' a', (as) => as.every((a) => a.querySelector('.sr-only') && a.querySelector('.sr-only').textContent === ' (opens in a new tab)')), 'compare links announce new tab');
+  ok(await page.$eval('.plan-day:has(#' + ctl + ')', (el) => getComputedStyle(el).alignItems) === 'flex-start', 'open plan day aligns check to the top');
   const p46Links = await page.$$eval('.plan-day .cmp-panel a', (as) => as.map((a) => a.href + ' ' + a.target));
   ok(p46Links.length === 2 && p46Links[0] === BG + 'Psalm%2046&version=NLT;WLC _blank' && p46Links[1].startsWith(STEP + 'OSHB|reference=Psa.46&'), 'Psalm 46 panel links: ' + p46Links.join(' , '));
   await chipP46.scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 120)); await page.waitForTimeout(200);
   await page.screenshot({ path: 'screenshots/06-compare-plan.png' });
+  await page.click('.plan-day:has(a:text-is("Day 29: Psalm 46")) [data-action=toggle-reading]'); // re-render
+  ok(await chipP46.getAttribute('aria-expanded') === 'true' && await page.$$eval('.plan-day .cmp-panel', (n) => n.length) === 1, 'open panel survives a re-render');
+  await page.click('.plan-day:has(a:text-is("Day 29: Psalm 46")) [data-action=toggle-reading]');
+  const chipP51 = page.locator('.plan-day:has(a:text-is("Day 30: Psalm 51")) .chip-lang');
+  await chipP51.click();
+  ok((await page.textContent('#' + (await chipP51.getAttribute('aria-controls')))).includes('run 2 ahead'), 'Psalm 51 shift note (2 ahead)');
+  await chipP51.click();
+  const chipJ3b = page.locator('.plan-day:has(a:text-is("Day 3: John 3")) .chip-lang');
+  await chipJ3b.click();
+  ok(!(await page.textContent('#' + (await chipJ3b.getAttribute('aria-controls')))).includes('ahead'), 'no shift note for John 3');
+  await chipJ3b.click();
   await chipP46.click();
-  ok(await page.$$eval('.cmp-panel', (n) => n.length) === 0, 'chip collapses again');
+  ok(await page.$$eval('.cmp-panel', (n) => n.length) === 0 && await chipP46.getAttribute('aria-controls') === null, 'chip collapses again');
   // split links for a verse whose Hebrew numbering differs: a phone whose date makes Psalm 46:1-3 the verse of the day
   const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     userAgent: devices['iPhone 13'].userAgent, colorScheme: 'dark' });
